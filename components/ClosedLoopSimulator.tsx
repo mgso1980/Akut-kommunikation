@@ -1,8 +1,8 @@
 
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI, Chat } from '@google/genai';
 import { BotIcon, UserIcon, AlertTriangleIcon, LoaderIcon, MessageCircleIcon, RefreshCwIcon, SendIcon } from './icons';
-import { getClosedLoopFeedback } from '../services/geminiService';
+import { getClosedLoopFeedback, getChatResponse } from '../services/geminiService';
 import { Message, StructuredFeedback } from '../types';
 import Feedback from './Feedback';
 
@@ -13,58 +13,7 @@ interface ClosedLoopSimulatorProps {
 
 type Status = 'idle' | 'active' | 'loading' | 'processing_feedback' | 'feedback' | 'error';
 
-const ClosedLoopSimulator: React.FC<ClosedLoopSimulatorProps> = ({ scenario }) => {
-  const [status, setStatus] = useState<Status>('idle');
-  const [history, setHistory] = useState<Message[]>([]);
-  const [userInput, setUserInput] = useState('');
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState<StructuredFeedback | null>(null);
-  
-  const chatRef = useRef<Chat | null>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const historyRef = useRef<Message[]>([]);
-  
-  useEffect(() => {
-    historyRef.current = history;
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [history]);
-
-
-  const handleFeedbackGeneration = useCallback(async () => {
-    // Only generate feedback if there was a meaningful interaction
-    if (historyRef.current.length < 2) { 
-        setStatus('idle');
-        return;
-    }
-    setStatus('processing_feedback');
-    try {
-        const feedbackObject = await getClosedLoopFeedback(scenario, historyRef.current);
-        setFeedback(feedbackObject);
-        setStatus('feedback');
-    } catch (e) {
-        const err = e as Error;
-        console.error("Error generating feedback:", err);
-        setError(err.message || 'Der opstod en fejl under generering af feedback.');
-        setStatus('error');
-    }
-  }, [scenario]);
-
-  const handleReset = useCallback(() => {
-    setHistory([]);
-    historyRef.current = [];
-    setFeedback(null);
-    setError('');
-    setUserInput('');
-    chatRef.current = null;
-    setStatus('idle');
-  }, []);
-
-  const handleStart = () => {
-    handleReset();
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-    const systemInstruction = `
+const systemInstruction = `
 Du er en erfaren overlæge, Dr. Jørgensen, i en akut medicinsk simulation. Patienten, Hr. Svendsen, udvikler akutte brystsmerter. Du er under pres, og din kommunikation kan være kortfattet og upræcis. Din opgave er at give en række ordinationer og sikre, at den sundhedsprofessionelle (brugeren) forstår dem korrekt via closed-loop kommunikation.
 
 **Vigtig Rolleinstruks:** Du er *altid* lægen, der giver ordinationer. Du udfører *aldrig* selv handlingerne. Gentag ikke brugerens handlinger som dine egne (f.eks. hvis brugeren siger "Jeg giver X", skal du IKKE svare "Okay, jeg giver X"). Din rolle er at ordinere, vurdere svar og gå videre.
@@ -124,50 +73,77 @@ Du er en erfaren overlæge, Dr. Jørgensen, i en akut medicinsk simulation. Pati
     *   **Vurdering:** Afvent en simpel bekræftelse.
     *   **Handling ved Succes:** Efter brugerens bekræftelse, siger du **PRÆCIS, ORD FOR ORD OG UDEN NOGEN ÆNDRINGER ELLER TILFØJELSER, DENNE ENDELIGE SÆTNING**: "Jeg afventer dit opkald." Dette er den *eneste* måde, simulationen kan afsluttes korrekt på.
 `;
-    chatRef.current = ai.chats.create({
-      model: 'gemini-2.5-flash',
-      config: { systemInstruction: systemInstruction },
-    });
 
+const ClosedLoopSimulator: React.FC<ClosedLoopSimulatorProps> = ({ scenario }) => {
+  const [status, setStatus] = useState<Status>('idle');
+  const [history, setHistory] = useState<Message[]>([]);
+  const [userInput, setUserInput] = useState('');
+  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState<StructuredFeedback | null>(null);
+  
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [history]);
+
+
+  const handleFeedbackGeneration = useCallback(async (finalHistory: Message[]) => {
+    if (finalHistory.length < 2) { 
+        setStatus('idle');
+        return;
+    }
+    setStatus('processing_feedback');
+    try {
+        const feedbackObject = await getClosedLoopFeedback(scenario, finalHistory);
+        setFeedback(feedbackObject);
+        setStatus('feedback');
+    } catch (e) {
+        const err = e as Error;
+        console.error("Error generating feedback:", err);
+        setError(err.message || 'Der opstod en fejl under generering af feedback.');
+        setStatus('error');
+    }
+  }, [scenario]);
+
+  const handleReset = useCallback(() => {
+    setHistory([]);
+    setFeedback(null);
+    setError('');
+    setUserInput('');
+    setStatus('idle');
+  }, []);
+
+  const handleStart = () => {
+    handleReset();
     const firstMessage = { role: 'model' as const, text: 'Giv patienten noget ilt, det ser skidt ud.' };
     setHistory([firstMessage]);
-    historyRef.current = [firstMessage];
     setStatus('active');
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || status !== 'active' || !chatRef.current) return;
+    if (!userInput.trim() || status !== 'active') return;
     
     setStatus('loading');
     const newUserMessage: Message = { role: 'user', text: userInput };
-    setHistory(prev => [...prev, newUserMessage]);
-    historyRef.current = [...historyRef.current, newUserMessage];
-    
-    const chat = chatRef.current;
+    const newHistory = [...history, newUserMessage];
+    setHistory(newHistory);
+    setUserInput('');
     
     try {
-      const stream = await chat.sendMessageStream({ message: userInput });
-      setUserInput('');
-      setHistory(prev => [...prev, { role: 'model', text: '' }]);
-  
-      let fullModelText = '';
-      for await (const chunk of stream) {
-        const chunkText = chunk.text;
-        fullModelText += chunkText;
-        setHistory(prev => {
-          const newHistory = [...prev];
-          newHistory[newHistory.length - 1].text = fullModelText;
-          return newHistory;
-        });
-      }
-      historyRef.current = [...historyRef.current, { role: 'model', text: fullModelText }];
+      const modelResponseText = await getChatResponse(newHistory, systemInstruction);
+      
+      const newModelMessage: Message = { role: 'model', text: modelResponseText };
+      setHistory(prev => [...prev, newModelMessage]);
   
       const finalPhrase = "jeg afventer dit opkald";
-      const normalizedModelText = fullModelText.toLowerCase().replace(/[.,!?]/g, "").trim();
+      const normalizedModelText = modelResponseText.toLowerCase().replace(/[.,!?]/g, "").trim();
   
       if (normalizedModelText.endsWith(finalPhrase)) {
-        setTimeout(() => handleFeedbackGeneration(), 1000);
+        setTimeout(() => handleFeedbackGeneration([...newHistory, newModelMessage]), 1000);
       } else {
         setStatus('active');
       }
@@ -186,7 +162,7 @@ Du er en erfaren overlæge, Dr. Jørgensen, i en akut medicinsk simulation. Pati
           {isModel ? <BotIcon className="h-5 w-5 text-slate-600 dark:text-slate-300" /> : <UserIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
         </div>
         <div className={`p-3 rounded-lg max-w-sm ${isModel ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200' : 'bg-blue-600 text-white'}`}>
-          <p className="text-sm whitespace-pre-wrap">{message.text || "..."}</p>
+          <p className="text-sm whitespace-pre-wrap">{message.text}</p>
         </div>
       </div>
     );

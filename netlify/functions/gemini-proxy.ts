@@ -209,6 +209,25 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
                 jsonText = response.text.trim();
                 break;
             }
+            case 'chat': {
+                const { history, systemInstruction } = payload;
+
+                const contents = history.map((msg: { role: string; text: string; }) => ({
+                    role: msg.role,
+                    parts: [{ text: msg.text }]
+                }));
+
+                response = await ai.models.generateContent({
+                    model,
+                    contents,
+                    config: {
+                        systemInstruction: systemInstruction
+                    },
+                });
+                const responseText = response.text;
+                jsonText = JSON.stringify({ text: responseText });
+                break;
+            }
             default:
                 return { statusCode: 400, body: JSON.stringify({ error: 'Invalid request type' }) };
         }

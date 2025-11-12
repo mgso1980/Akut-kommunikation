@@ -53,6 +53,32 @@ export async function getClosedLoopFeedback(scenario: string, history: Message[]
   }
 }
 
+export async function getChatResponse(history: Message[], systemInstruction: string): Promise<string> {
+  try {
+    const response = await fetch('/.netlify/functions/gemini-proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'chat',
+        payload: { history, systemInstruction }
+      }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Serverfejl: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.text as string;
+  } catch (error) {
+    console.error("Error calling proxy for Chat response:", error);
+    throw new Error("Kunne ikke få svar fra AI-agenten. Tjek konsollen for detaljer.");
+  }
+}
+
 export async function generateQuizQuestions(numberOfQuestions: number = 8): Promise<QuizQuestion[]> {
   try {
     const response = await fetch('/.netlify/functions/gemini-proxy', {
