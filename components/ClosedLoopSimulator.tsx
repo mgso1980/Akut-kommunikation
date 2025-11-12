@@ -220,7 +220,7 @@ Du er en erfaren overlæge, Dr. Jørgensen, i en akut medicinsk simulation. Pati
   return (
     <div className="space-y-4 h-full flex flex-col">
       <h2 className="text-xl font-bold text-slate-900 dark:text-white border-b-2 border-blue-500 pb-2">
-        Closed Loop Simulator (Tekstbaseret)
+        Closed Loop Simulator
       </h2>
       <div ref={chatContainerRef} className="flex-grow p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg overflow-y-auto min-h-[300px] flex flex-col">
         {history.length > 0 ? (
