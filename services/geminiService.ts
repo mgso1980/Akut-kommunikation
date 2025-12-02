@@ -1,8 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Message, StructuredFeedback, QuizQuestion } from '../types';
 
-// Initialize AI client
-const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize AI client with validation
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.error("CRITICAL ERROR: process.env.API_KEY is missing or empty.");
+    throw new Error("API_KEY mangler! Tjek at 'process.env.API_KEY' er konfigureret korrekt i miljøvariablerne.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 const modelName = "gemini-2.5-flash";
 
@@ -130,12 +137,19 @@ export async function getIsbarFeedback(scenario: string, reportText: string): Pr
         },
     });
 
-    if (!response.text) throw new Error("No response from AI");
-    return JSON.parse(response.text) as StructuredFeedback;
+    if (!response.text) throw new Error("Modtog intet tekstsvar fra AI-agenten.");
+    
+    try {
+        return JSON.parse(response.text) as StructuredFeedback;
+    } catch (parseError) {
+        console.error("JSON Parse Error:", parseError, "Raw text:", response.text);
+        throw new Error("Kunne ikke forstå svaret fra AI-agenten (JSON-fejl).");
+    }
 
   } catch (error) {
     console.error("Error calling AI for ISBAR feedback:", error);
-    throw new Error("Kunne ikke hente feedback fra AI-agenten. Tjek konsollen for detaljer.");
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Fejl ved hentning af feedback: ${msg}`);
   }
 }
 
@@ -174,12 +188,13 @@ export async function getClosedLoopFeedback(scenario: string, history: Message[]
         },
     });
 
-    if (!response.text) throw new Error("No response from AI");
+    if (!response.text) throw new Error("Modtog intet tekstsvar fra AI-agenten.");
     return JSON.parse(response.text) as StructuredFeedback;
 
   } catch (error) {
     console.error("Error calling AI for Closed Loop feedback:", error);
-    throw new Error("Kunne ikke hente feedback fra AI-agenten. Tjek konsollen for detaljer.");
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Fejl ved hentning af feedback: ${msg}`);
   }
 }
 
@@ -202,7 +217,8 @@ export async function getChatResponse(history: Message[], systemInstruction: str
     return response.text || "";
   } catch (error) {
     console.error("Error calling AI for Chat response:", error);
-    throw new Error("Kunne ikke få svar fra AI-agenten. Tjek konsollen for detaljer.");
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Kunne ikke få svar fra AI-agenten: ${msg}`);
   }
 }
 
@@ -228,10 +244,11 @@ export async function generateQuizQuestions(numberOfQuestions: number = 8): Prom
         },
     });
 
-    if (!response.text) throw new Error("No response from AI");
+    if (!response.text) throw new Error("Modtog intet tekstsvar fra AI-agenten.");
     return JSON.parse(response.text) as QuizQuestion[];
   } catch (error) {
     console.error("Error calling AI for Quiz questions:", error);
-    throw new Error("Kunne ikke generere quiz-spørgsmål fra AI-agenten. Tjek konsollen for detaljer.");
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Kunne ikke generere quiz: ${msg}`);
   }
 }
