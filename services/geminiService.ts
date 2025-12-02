@@ -1,49 +1,255 @@
+import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Message, StructuredFeedback, QuizQuestion } from '../types';
 
-const PROXY_ENDPOINT = '/.netlify/functions/gemini-proxy';
-
-async function callProxy<T>(type: string, payload: any): Promise<T> {
-  try {
-    const response = await fetch(PROXY_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, payload }),
-    });
-
-    if (!response.ok) {
-        let errorMessage = `Fejl (${response.status})`;
-        try {
-            const errorBody = await response.json();
-            if (errorBody.error) errorMessage += `: ${errorBody.error}`;
-        } catch (e) {
-            // Fallback if error body isn't JSON
-            const text = await response.text();
-            if (text) errorMessage += `: ${text}`;
-        }
-        throw new Error(errorMessage);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error(`Error calling AI proxy for ${type}:`, error);
-    const msg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Kunne ikke hente svar fra AI-agenten. Tjek din internetforbindelse eller prøv igen senere. (${msg})`);
+// Helper to get initialized client
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY mangler! Tjek at 'process.env.API_KEY' er konfigureret korrekt i miljøvariablerne.");
   }
-}
+  return new GoogleGenAI({ apiKey });
+};
+
+const modelId = "gemini-2.5-flash";
+
+// Schemas
+const isbarFeedbackSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+        opening: { type: Type.STRING, description: "En kort, opmuntrende åbningserklæring." },
+        sections: {
+            type: Type.ARRAY,
+            description: "En liste af feedback-sektioner for hver del af ISBAR.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "Titlen på sektionen (f.eks. 'Identifikation', 'Situation')." },
+                    rating: { 
+                        type: Type.STRING, 
+                        description: "En vurdering af sektionen.",
+                        enum: ['God', 'Tilstrækkelig', 'Kræver forbedring'],
+                    },
+                    points: {
+                        type: Type.ARRAY,
+                        description: "En liste af specifikke feedbackpunkter som strenge.",
+                        items: { type: Type.STRING }
+                    }
+                },
+                required: ['title', 'rating', 'points']
+            }
+        },
+        conclusion: { type: Type.STRING, description: "En opsummerende konklusion med de vigtigste læringspunkter." }
+    },
+    required: ['opening', 'sections', 'conclusion']
+};
+
+const closedLoopFeedbackSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+        opening: { type: Type.STRING, description: "En kort, opmuntrende åbningserklæring." },
+        sections: {
+            type: Type.ARRAY,
+            description: "En liste af feedback-sektioner baseret på evalueringskriterierne.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { 
+                        type: Type.STRING, 
+                        description: "Titlen på sektionen (f.eks. 'Afklaring af Uklarheder', 'Korrekt \"Closed Loop\" Bekræftelse')." 
+                    },
+                    rating: { 
+                        type: Type.STRING, 
+                        description: "En vurdering af præstationen i denne sektion.",
+                        enum: ['God', 'Tilstrækkelig', 'Kræver forbedring'],
+                    },
+                    points: {
+                        type: Type.ARRAY,
+                        description: "En liste af specifikke feedbackpunkter med eksempler fra samtalen.",
+                        items: { type: Type.STRING }
+                    }
+                },
+                required: ['title', 'rating', 'points']
+            }
+        },
+        conclusion: { type: Type.STRING, description: "En opsummerende konklusion med de vigtigste læringspunkter og anbefalinger." }
+    },
+    required: ['opening', 'sections', 'conclusion']
+};
+
+const quizQuestionSchema: Schema = {
+    type: Type.ARRAY,
+    description: "En liste af quiz-spørgsmål.",
+    items: {
+        type: Type.OBJECT,
+        properties: {
+            id: { type: Type.INTEGER, description: "Et unikt ID for spørgsmålet (f.eks. 1, 2, 3)." },
+            type: {
+                type: Type.STRING,
+                description: "Typen af spørgsmål.",
+                enum: ['multiple-choice', 'multiple-select']
+            },
+            question: { type: Type.STRING, description: "Selve spørgsmålsteksten." },
+            options: {
+                type: Type.ARRAY,
+                description: "En liste af svarmuligheder (typisk 4-5).",
+                items: { type: Type.STRING }
+            },
+            correctAnswers: {
+                type: Type.ARRAY,
+                description: "En liste med de korrekte svar. For 'multiple-choice' skal denne liste kun indeholde ét svar.",
+                items: { type: Type.STRING }
+            }
+        },
+        required: ['id', 'type', 'question', 'options', 'correctAnswers']
+    }
+};
+
+// API Functions
 
 export async function getIsbarFeedback(scenario: string, reportText: string): Promise<StructuredFeedback> {
-  return callProxy<StructuredFeedback>('isbar', { scenario, reportText });
+    const ai = getAiClient();
+    const prompt = `
+        Du er Dr. Erik Jørgensen, en erfaren og pædagogisk anlagt overlæge. Analysér den skriftlige ISBAR-rapport nedenfor. 
+        Dit mål er at vejlede og styrke brugerens kompetencer. Din feedback skal være konstruktiv, støttende og fremhæve både styrker og områder til forbedring i en positiv og motiverende tone.
+        **Vigtigt vedr. tilgængelighed: Vær tolerant over for stavefejl. Hvis et ord er stavet forkert, men den kliniske mening er klar (f.eks. "pnumoni" i stedet for "pneumoni"), skal du vurdere indholdet og ikke kommentere på stavningen, medmindre det skaber alvorlig tvetydighed.**
+        Returnér din feedback som et JSON-objekt, der følger det specificerede skema.
+
+        **Vigtigt: Basér udelukkende din feedback på informationen i det givne 'Klinisk Scenarie'. Antag ikke, at brugeren har adgang til information, der ikke er eksplicit nævnt (f.eks. A-gas resultater, som kun er bestilt, ikke modtaget).**
+
+        **Vurderingskriterier:**
+        - **Struktur:** Er rapporten logisk opbygget efter ISBAR?
+        - **Indhold:** Er alle relevante informationer fra scenariet med i hver sektion? Er informationen præcis?
+        - **Klarhed:** Er rapporten koncis og let at forstå?
+
+        **Klinisk Scenarie:**
+        ${scenario}
+
+        ---
+
+        **Brugerens skriftlige ISBAR-rapport:**
+        "${reportText}"
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelId,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: isbarFeedbackSchema,
+            },
+        });
+        
+        const text = response.text;
+        if (!text) throw new Error("Intet svar modtaget fra AI.");
+        return JSON.parse(text) as StructuredFeedback;
+    } catch (error) {
+        console.error("Fejl ved ISBAR feedback:", error);
+        throw error;
+    }
 }
 
 export async function getClosedLoopFeedback(scenario: string, history: Message[]): Promise<StructuredFeedback> {
-  return callProxy<StructuredFeedback>('closedLoop', { scenario, history });
+    const ai = getAiClient();
+    
+    // Format history for the prompt (as a transcript)
+    const formattedHistory = history
+        .map(msg => `${msg.role === 'user' ? 'Bruger' : 'Læge'}: ${msg.text}`)
+        .join('\n');
+
+    const prompt = `
+        Du er Dr. Erik Jørgensen, en erfaren overlæge. Evaluér den transskriberede "Closed Loop"-samtale nedenfor.
+        Din feedback skal være direkte og ærlig. **Påpeg tydeligt, når brugeren misser en upræcis ordination eller fejler i at gentage den korrekt.** Forklar de potentielle kliniske risici.
+        **Vigtigt vedr. tilgængelighed: Vær tolerant over for stavefejl i brugerens svar. Fokuser på, om den kliniske intention er forstået, ikke på præcis stavning.**
+        Returnér din feedback som et JSON-objekt, der følger det specificerede skema.
+
+        **Evalueringskriterier (brug disse som titler i dine sektioner):**
+        1.  **Afklaring af Uklarheder:** Vurder, om brugeren identificerede og afklarede de bevidst upræcise ordinationer.
+        2.  **Korrekt "Closed Loop" Bekræftelse:** Vurder, om brugeren gentog den *fulde og korrekte* ordination tilbage.
+        3.  **Initiativ og Kommunikation:** Vurder, om brugeren tog styring i kommunikationen.
+
+        **Klinisk Scenarie:**
+        ${scenario}
+
+        ---
+
+        **Transskription af Samtalen:**
+        ${formattedHistory}
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelId,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: closedLoopFeedbackSchema,
+            },
+        });
+        
+        const text = response.text;
+        if (!text) throw new Error("Intet svar modtaget fra AI.");
+        return JSON.parse(text) as StructuredFeedback;
+    } catch (error) {
+        console.error("Fejl ved Closed Loop feedback:", error);
+        throw error;
+    }
 }
 
 export async function getChatResponse(history: Message[], systemInstruction: string): Promise<string> {
-    const data = await callProxy<{ text: string }>('chat', { history, systemInstruction });
-    return data.text;
+    const ai = getAiClient();
+    
+    // Convert history to Content objects
+    const contents = history.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.text }]
+    }));
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelId,
+            contents,
+            config: {
+                systemInstruction: systemInstruction,
+            },
+        });
+
+        const text = response.text;
+        if (!text) throw new Error("Intet svar modtaget fra AI.");
+        return text;
+    } catch (error) {
+        console.error("Fejl ved chat svar:", error);
+        throw error;
+    }
 }
 
 export async function generateQuizQuestions(numberOfQuestions: number = 8): Promise<QuizQuestion[]> {
-  return callProxy<QuizQuestion[]>('quiz', { numberOfQuestions });
+    const ai = getAiClient();
+    const prompt = `
+        Du er en klinisk underviser med speciale i sygepleje i Danmark. Din opgave er at generere et quiz-sæt med ${numberOfQuestions} spørgsmål om akut kommunikation for sygeplejersker (f.eks. ISBAR, closed loop, kommunikation med patienter/pårørende).
+        
+        Spørgsmålene skal være relevante for dansk sundhedsvæsen.
+        Varier mellem 'multiple-choice' (hvor kun ét svar er korrekt) og 'multiple-select' (hvor flere svar kan være korrekte).
+        Sørg for, at 'options'-listen indeholder både de korrekte og plausible forkerte svar.
+        
+        Returnér quizzen som et JSON-array, der følger det specificerede skema. Sørg for at 'correctAnswers' er et array, selv for 'multiple-choice' spørgsmål (med kun ét element).
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelId,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: quizQuestionSchema,
+            },
+        });
+        
+        const text = response.text;
+        if (!text) throw new Error("Intet svar modtaget fra AI.");
+        return JSON.parse(text) as QuizQuestion[];
+    } catch (error) {
+        console.error("Fejl ved generering af quiz:", error);
+        throw error;
+    }
 }
