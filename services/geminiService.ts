@@ -1,11 +1,78 @@
+
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Message, StructuredFeedback, QuizQuestion } from '../types';
 
-// Helper to get initialized client
-const getAiClient = () => {
+// --- MOCK DATA FOR DEMO MODE ---
+const MOCK_ISBAR_FEEDBACK: StructuredFeedback = {
+    opening: "OBS: Dette er et demo-svar (Ingen API-nøgle fundet). Her ville AI'en normalt give specifik ros baseret på din tekst.",
+    sections: [
+        {
+            title: "Identifikation",
+            rating: "God",
+            points: ["Du præsenterede dig korrekt med navn og afdeling.", "Patientens data blev nævnt tydeligt."]
+        },
+        {
+            title: "Situation",
+            rating: "Tilstrækkelig",
+            points: ["Du beskrev det akutte problem.", "Husk at være endnu mere præcis med tidslinjen."]
+        },
+        {
+            title: "Baggrund & Analyse",
+            rating: "God",
+            points: ["Relevante vitale værdier blev videregivet.", "God sammenkobling af symptomer."]
+        }
+    ],
+    conclusion: "Dette er en standard konklusion for demo-tilstand. Med en gyldig API-nøgle vil du her få en personlig opsummering."
+};
+
+const MOCK_CLOSED_LOOP_FEEDBACK: StructuredFeedback = {
+    opening: "Demo-feedback: Closed Loop simulation gennemført.",
+    sections: [
+        {
+            title: "Afklaring af Uklarheder",
+            rating: "God",
+            points: ["Du spurgte ind til dosis, hvilket var korrekt.", "Godt at du fik præciseret administrationsvejen."]
+        },
+        {
+            title: "Korrekt 'Closed Loop'",
+            rating: "Tilstrækkelig",
+            points: ["Du gentog ordinationerne, men glemte en enkelt detalje undervejs.", "Husk altid at gentage medicinnavnet fuldt ud."]
+        }
+    ],
+    conclusion: "Flot arbejde. I denne demo-version analyseres dine specifikke svar ikke dybdegående."
+};
+
+const MOCK_QUIZ_QUESTIONS: QuizQuestion[] = [
+    {
+        id: 1,
+        type: 'multiple-choice',
+        question: "(Demo) Hvad står 'I' for i ISBAR?",
+        options: ["Information", "Identifikation", "Indlæggelse", "Intervention"],
+        correctAnswers: ["Identifikation"]
+    },
+    {
+        id: 2,
+        type: 'multiple-choice',
+        question: "(Demo) Hvorfor bruger vi Closed Loop kommunikation?",
+        options: ["For at spare tid", "For at sikre at beskeden er forstået korrekt", "For at teste lægens viden", "Det er kun for piloter"],
+        correctAnswers: ["For at sikre at beskeden er forstået korrekt"]
+    },
+    {
+        id: 3,
+        type: 'multiple-select',
+        question: "(Demo) Hvilke vitale værdier er relevante ved dyspnø?",
+        options: ["Saturation (SAT)", "Respirationsfrekvens", "Blodsukker", "Hårfarve"],
+        correctAnswers: ["Saturation (SAT)", "Respirationsfrekvens"]
+    }
+];
+
+// --- REAL AI SERVICE ---
+
+const getAiClient = (): GoogleGenAI | null => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("API_KEY mangler! Tjek at 'process.env.API_KEY' er konfigureret korrekt i miljøvariablerne.");
+    console.warn("ADVARSEL: API_KEY mangler. Applikationen kører i DEMO-tilstand.");
+    return null;
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -108,6 +175,11 @@ const quizQuestionSchema: Schema = {
 
 export async function getIsbarFeedback(scenario: string, reportText: string): Promise<StructuredFeedback> {
     const ai = getAiClient();
+    if (!ai) {
+        // Fallback to mock data if no API key
+        return new Promise(resolve => setTimeout(() => resolve(MOCK_ISBAR_FEEDBACK), 1000));
+    }
+
     const prompt = `
         Du er Dr. Erik Jørgensen, en erfaren og pædagogisk anlagt overlæge. Analysér den skriftlige ISBAR-rapport nedenfor. 
         Dit mål er at vejlede og styrke brugerens kompetencer. Din feedback skal være konstruktiv, støttende og fremhæve både styrker og områder til forbedring i en positiv og motiverende tone.
@@ -144,13 +216,16 @@ export async function getIsbarFeedback(scenario: string, reportText: string): Pr
         if (!text) throw new Error("Intet svar modtaget fra AI.");
         return JSON.parse(text) as StructuredFeedback;
     } catch (error) {
-        console.error("Fejl ved ISBAR feedback:", error);
-        throw error;
+        console.error("Fejl ved ISBAR feedback (Fallback til demo):", error);
+        return MOCK_ISBAR_FEEDBACK;
     }
 }
 
 export async function getClosedLoopFeedback(scenario: string, history: Message[]): Promise<StructuredFeedback> {
     const ai = getAiClient();
+    if (!ai) {
+        return new Promise(resolve => setTimeout(() => resolve(MOCK_CLOSED_LOOP_FEEDBACK), 1000));
+    }
     
     // Format history for the prompt (as a transcript)
     const formattedHistory = history
@@ -191,13 +266,24 @@ export async function getClosedLoopFeedback(scenario: string, history: Message[]
         if (!text) throw new Error("Intet svar modtaget fra AI.");
         return JSON.parse(text) as StructuredFeedback;
     } catch (error) {
-        console.error("Fejl ved Closed Loop feedback:", error);
-        throw error;
+        console.error("Fejl ved Closed Loop feedback (Fallback til demo):", error);
+        return MOCK_CLOSED_LOOP_FEEDBACK;
     }
 }
 
 export async function getChatResponse(history: Message[], systemInstruction: string): Promise<string> {
     const ai = getAiClient();
+    if (!ai) {
+         // Simple mock logic for chat
+         const lastMsg = history[history.length - 1]?.text.toLowerCase() || "";
+         let reply = "Jeg hører hvad du siger. (DEMO: AI-nøgle mangler)";
+         
+         if (lastMsg.includes("ilt")) reply = "Fint. Hvad så med EKG? (DEMO)";
+         else if (lastMsg.includes("ekg")) reply = "Modtaget. Ring når du har svar. (DEMO)";
+         else reply = "Jeg afventer dit opkald. (DEMO)";
+
+         return new Promise(resolve => setTimeout(() => resolve(reply), 500));
+    }
     
     // Convert history to Content objects
     const contents = history.map(msg => ({
@@ -225,6 +311,10 @@ export async function getChatResponse(history: Message[], systemInstruction: str
 
 export async function generateQuizQuestions(numberOfQuestions: number = 8): Promise<QuizQuestion[]> {
     const ai = getAiClient();
+    if (!ai) {
+        return new Promise(resolve => setTimeout(() => resolve(MOCK_QUIZ_QUESTIONS), 1000));
+    }
+
     const prompt = `
         Du er en klinisk underviser med speciale i sygepleje i Danmark. Din opgave er at generere et quiz-sæt med ${numberOfQuestions} spørgsmål om akut kommunikation for sygeplejersker (f.eks. ISBAR, closed loop, kommunikation med patienter/pårørende).
         
@@ -249,7 +339,7 @@ export async function generateQuizQuestions(numberOfQuestions: number = 8): Prom
         if (!text) throw new Error("Intet svar modtaget fra AI.");
         return JSON.parse(text) as QuizQuestion[];
     } catch (error) {
-        console.error("Fejl ved generering af quiz:", error);
-        throw error;
+        console.error("Fejl ved generering af quiz (Fallback til demo):", error);
+        return MOCK_QUIZ_QUESTIONS;
     }
 }
