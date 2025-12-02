@@ -1,4 +1,5 @@
-import { ScenarioData } from './types';
+
+import { ScenarioData, IsbarInput } from './types';
 
 export const SCENARIO: ScenarioData = {
   title: "Case: Hr. Svendsen",
@@ -8,3 +9,19 @@ Du tilser i AV Hr. Svendsen, da han i løbet af de sidste timer er blevet tiltag
 
 Temperaturen er i starten af vagten, for 1 time siden, målt til 37,1. Patienten bliver tiltagende urolig og han virker afkræftet. Du tager hans hånd for at berolige ham - huden føles varm og tør. Sammen med din kollega bliver I enige om at kontakte lægen, da hans SAT fortsætter med at ligge på 86-88%.`,
 };
+
+export const EXEMPLARY_ISBAR: IsbarInput = {
+  identification: "Jeg hedder [Dit Navn], sygeplejerske fra FAM. Jeg ringer angående Hr. Svendsen på stue 22 (CPR: xxxxx-xxxx).",
+  situation: "Patienten er blevet tiltagende respiratorisk dårlig med dyspnø og lav saturation på 86-88% trods iltøgning.",
+  background: "Han blev indlagt i går med KOL i exacerbation og pneumoni. Han er i behandling med IV Tazocin og vanlig inhalation. Han fik oprindeligt 2 L ilt, nu øget til 3 L.",
+  analysis: "Han er klamtsvedende, urolig og rallende. RF er 32, Puls 110, BT 167/82. Han virker udtrættet og septisk eller med forværring af sin pneumoni/KOL. A-gas er bestilt men svar foreligger ikke endnu.",
+  recommendation: "Jeg har brug for, at du kommer og tilser ham nu. Skal jeg øge ilten yderligere eller give mere inhalationsmedicin indtil du kommer?"
+};
+
+export const ISBAR_CHECKLIST = [
+  "Har du præsenteret dig selv og patienten tydeligt (Navn, CPR, Afdeling)?",
+  "Har du beskrevet det akutte problem først (Situation)?",
+  "Er relevante målinger (RF, SAT, BT, Puls) inkluderet?",
+  "Har du nævnt den aktuelle behandling (Medicin, Ilt)?",
+  "Har du givet en tydelig anbefaling eller stillet et konkret spørgsmål til lægen?"
+];
