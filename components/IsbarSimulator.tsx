@@ -12,19 +12,19 @@ interface IsbarSimulatorProps {
 type Status = 'editing' | 'review';
 
 const initialIsbarInput: IsbarInput = {
-  identification: '',
+  identifikation: '',
   situation: '',
-  background: '',
-  analysis: '',
-  recommendation: '',
+  baggrund: '',
+  analyse: '',
+  anbefaling: '',
 };
 
 const labels: Record<keyof IsbarInput, string> = {
-  identification: 'Identifikation',
+  identifikation: 'Identifikation',
   situation: 'Situation',
-  background: 'Baggrund',
-  analysis: 'Analyse',
-  recommendation: 'Anbefaling'
+  baggrund: 'Baggrund',
+  analyse: 'Analyse',
+  anbefaling: 'Anbefaling'
 };
 
 const IsbarSimulator: React.FC<IsbarSimulatorProps> = ({ scenario }) => {

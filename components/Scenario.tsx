@@ -9,12 +9,12 @@ interface ScenarioProps {
 
 const Scenario: React.FC<ScenarioProps> = ({ title, description, mode }) => {
   const taskDescription = {
-    isbar: "Gennemgå casen og udfyld ISBAR-formularen for at informere den vagthavende læge om patientens forværrede tilstand. Vær klar, koncis og grundig.",
-    closedLoop: "Du er i en akut situation. Overlægen er presset og kan give upræcise ordinationer. Din opgave er at lytte, bede om afklaring på enhver tvivl (f.eks. dosis, præparat, metode) og derefter bekræfte den præcise ordination med closed loop-kommunikation. Bemærk: Simulationen afsluttes, når lægen siger 'Jeg afventer dit opkald'.",
-    quiz: "Test din viden om akut kommunikation. Besvar spørgsmålene nedenfor og tjek dine svar for at se, hvordan du klarede dig."
+    isbar: "Læs casen grundigt. Udfyld derefter ISBAR-skemaet som forberedelse til opkaldet til lægen. Når du er færdig, får du vist et eksemplarisk svar og en tjekliste, så du kan sammenligne og vurdere din egen præstation.",
+    closedLoop: "Du spiller nu rollen som 'Safety Guard' (Sikkerhedsbarriere) i dette Closed Loop spil. Dr. Jørgensen er stresset og giver dig en række ordinationer. Din opgave er at vurdere hver ordre: Skal du UDFØRE den (hvis den er sikker), AFKLARE den (hvis den er upræcis), eller STOPPE den (hvis den er farlig)? Pas på din patientsikkerheds-score!",
+    quiz: "Test din viden om sikker kommunikation, ISBAR og Closed Loop. Svar på spørgsmålene og få umiddelbar feedback på din teoretiske viden."
   };
   
-  const displayTitle = mode === 'quiz' ? 'Videnstest i Akut Kommunikation' : title;
+  const displayTitle = mode === 'quiz' ? 'Videnstest' : title;
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -29,7 +29,7 @@ const Scenario: React.FC<ScenarioProps> = ({ title, description, mode }) => {
           </p>
         ) : (
            <p className="text-slate-600 dark:text-slate-300">
-            Dette arbejdsark hjælper dig med at teste din viden om akut kommunikation i sygepleje. Besvar alle spørgsmål så grundigt som muligt. Brug dine egne ord, hvor det er relevant, og tænk på praktiske situationer fra din kliniske erfaring.
+            Dette modul tester din forståelse af de kommunikationsværktøjer, vi bruger til at sikre patientsikkerheden i akutte situationer.
           </p>
         )}
       </div>

@@ -6,7 +6,7 @@ import Scenario from './components/Scenario';
 import IsbarSimulator from './components/IsbarSimulator';
 import ClosedLoopSimulator from './components/ClosedLoopSimulator';
 import Quiz from './components/Quiz';
-import { StethoscopeIcon, MessageCircleIcon, FileTextIcon } from './components/icons';
+import { StethoscopeIcon, MessageCircleIcon, FileTextIcon, AlertTriangleIcon } from './components/icons';
 
 type Mode = 'isbar' | 'closedLoop' | 'quiz';
 
@@ -39,7 +39,7 @@ const App: React.FC = () => {
                     </div>
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Kommunikationstræner</h1>
-                        <p className="text-slate-500 dark:text-slate-400 mt-1">Øv dine kommunikationsevner med en AI-drevet klinisk agent.</p>
+                        <p className="text-slate-500 dark:text-slate-400 mt-1">Øv dine kommunikationsevner gennem interaktive cases og spil.</p>
                     </div>
                 </div>
                 <div className="flex items-center space-x-2 p-1 bg-slate-200/70 dark:bg-slate-900/50 rounded-lg self-start sm:self-center">
@@ -47,10 +47,10 @@ const App: React.FC = () => {
                       <StethoscopeIcon className="h-4 w-4" /> <span>ISBAR</span>
                     </TabButton>
                     <TabButton active={mode === 'closedLoop'} onClick={() => setMode('closedLoop')}>
-                      <MessageCircleIcon className="h-4 w-4" /> <span>Closed Loop</span>
+                      <AlertTriangleIcon className="h-4 w-4" /> <span>Sikkerhedsspil (Closed Loop)</span>
                     </TabButton>
                     <TabButton active={mode === 'quiz'} onClick={() => setMode('quiz')}>
-                      <FileTextIcon className="h-4 w-4" /> <span>Quiz</span>
+                      <FileTextIcon className="h-4 w-4" /> <span>Videnstest</span>
                     </TabButton>
                 </div>
             </div>
@@ -75,7 +75,7 @@ const App: React.FC = () => {
         </div>
       </main>
       <footer className="text-center p-4 text-slate-500 dark:text-slate-400 text-sm">
-          <p>&copy; {new Date().getFullYear()} Klinisk Kommunikationstræner. Drevet af Gemini.</p>
+          <p>&copy; {new Date().getFullYear()} Klinisk Kommunikationstræner.</p>
       </footer>
     </div>
   );

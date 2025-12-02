@@ -14,11 +14,11 @@ const IsbarForm: React.FC<IsbarFormProps> = ({ isbarInput, setIsbarInput }) => {
   };
 
   const fields: { key: keyof IsbarInput; label: string; placeholder: string }[] = [
-    { key: 'identification', label: 'I: Identifikation', placeholder: 'Hvem er du, hvor ringer du fra, og hvem er patienten?' },
+    { key: 'identifikation', label: 'I: Identifikation', placeholder: 'Hvem er du, hvor ringer du fra, og hvem er patienten?' },
     { key: 'situation', label: 'S: Situation', placeholder: 'Hvad er det akutte problem? Hvorfor ringer du?' },
-    { key: 'background', label: 'B: Baggrund', placeholder: 'Hvad er den relevante baggrundsinformation om patienten?' },
-    { key: 'analysis', label: 'A: Analyse', placeholder: 'Hvad er din vurdering af situationen? Hvad tror du, der er galt?' },
-    { key: 'recommendation', label: 'R: Anbefaling', placeholder: 'Hvad foreslår du, der skal gøres? Hvad har du brug for?' },
+    { key: 'baggrund', label: 'B: Baggrund', placeholder: 'Hvad er den relevante baggrundsinformation om patienten?' },
+    { key: 'analyse', label: 'A: Analyse', placeholder: 'Hvad er din vurdering af situationen? Hvad tror du, der er galt?' },
+    { key: 'anbefaling', label: 'R: Anbefaling', placeholder: 'Hvad foreslår du, der skal gøres? Hvad har du brug for?' },
   ];
 
   return (

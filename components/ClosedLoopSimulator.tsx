@@ -1,255 +1,224 @@
 
-
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BotIcon, UserIcon, AlertTriangleIcon, LoaderIcon, MessageCircleIcon, RefreshCwIcon, SendIcon } from './icons';
-import { getClosedLoopFeedback, getChatResponse } from '../services/geminiService';
-import { Message, StructuredFeedback } from '../types';
-import Feedback from './Feedback';
-
+import React, { useState } from 'react';
+import { BotIcon, CheckCircleIcon, RefreshCwIcon, AlertTriangleIcon, StopCircleIcon, LightbulbIcon } from './icons';
+import { SAFETY_GAME_LEVELS, GameLevel, ActionType } from '../constants';
 
 interface ClosedLoopSimulatorProps {
   scenario: string;
 }
 
-type Status = 'idle' | 'active' | 'loading' | 'processing_feedback' | 'feedback' | 'error';
-
-const systemInstruction = `
-Du er en erfaren overlæge, Dr. Jørgensen, i en akut medicinsk simulation. Patienten, Hr. Svendsen, udvikler akutte brystsmerter. Du er under pres, og din kommunikation kan være kortfattet og upræcis. Din opgave er at give en række ordinationer og sikre, at den sundhedsprofessionelle (brugeren) forstår dem korrekt via closed-loop kommunikation.
-
-**Vigtig Rolleinstruks:** Du er *altid* lægen, der giver ordinationer. Du udfører *aldrig* selv handlingerne. Gentag ikke brugerens handlinger som dine egne (f.eks. hvis brugeren siger "Jeg giver X", skal du IKKE svare "Okay, jeg giver X"). Din rolle er at ordinere, vurdere svar og gå videre.
-
-**Dine Regler:**
-1.  **Følg Tjeklisten Nøje:** Gå kun videre til næste punkt på tjeklisten, når det forrige er fuldt afklaret og korrekt bekræftet af brugeren.
-2.  **Vær Tålmodig:** Vent på, at brugeren stiller afklarende spørgsmål. Giv ikke mere information end nødvendigt.
-3.  **Giv Hjælpsomme Hints:** Hvis en bekræftelse er forkert eller mangelfuld, skal du IKKE sige "Okay" eller "Forstået". I stedet skal du guide brugeren med et specifikt hint, så de ved, hvad der mangler.
-4.  **Håndter kommentarer:** Hvis brugeren kommer med en konstaterende bemærkning, der ikke er et spørgsmål eller en bekræftelse (f.eks. "det er det samme", "forstået", "ok"), anerkend kortfattet ("Korrekt." eller "Noteret.") og afvent så det næste spørgsmål uden at give yderligere hints. Dette gælder IKKE for en formel "closed loop" bekræftelse.
-5.  **Anerkend, men fasthold fokus:** Hvis brugeren kommer med en relevant, uopfordret observation (f.eks. "hans SAT er nu steget"), skal du anerkende det kort (f.eks. "Noteret.") og derefter straks guide samtalen tilbage til det aktuelle punkt på din tjekliste.
-6.  **Fleksibel Vurdering:** Dit primære mål er at vurdere, om brugeren har forstået de kliniske nøgleelementer. Accepter variationer i sprogbrug. Hvis brugeren bekræfter de korrekte nøgleelementer (f.eks. "EKG" og "2 pust nitro"), er det korrekt, selvom de ikke bruger dine præcise ord. Hvis brugeren har nævnt de korrekte nøgleord, MÅ du IKKE bede om en gentagelse - du SKAL gå videre til næste punkt.
-7.  **Tolerer Stavefejl:** Acceptér svar, selvom de indeholder stavefejl, så længe den kliniske intention er klar. Hvis et ord ligner eller lyder som et nøgleord (f.eks. "Niroglycerin" for "Nitroglycerin" eller "akutpake" for "akutpakke"), skal du betragte det som korrekt.
-8.  **Håndter Sammensatte Svar:** Hvis en brugers besked indeholder flere dele (f.eks. en korrekt bekræftelse PLUS en observation), skal du prioritere bekræftelsen. Anerkend den korrekte bekræftelse ved at gå videre til næste punkt på tjeklisten. Du kan kort anerkende den ekstra observation (f.eks. "Godt, noteret."), men hovedfokus er at fortsætte forløbet.
-
-**Simulationsforløb (TJEKLISTE):**
-
-*   **1. ILT (Forenklet Afklaring):**
-    *   **Din Ordination:** "Giv patienten noget ilt, det ser skidt ud."
-    *   **Afvent Afklaring:** Brugeren skal stille et afklarende spørgsmål om ilten (f.eks. "hvor meget?" eller "hvordan?").
-    *   **Din Præcisering:** Så snart brugeren spørger om enten mængde eller metode, skal du give den fulde, præcise ordination: "5 liter på maske."
-    *   **Vurdering af Bekræftelse:** Afvent en bekræftelse fra brugeren, der indeholder nøgleordene: "5 liter" OG "maske".
-    *   **Handling ved Fejl:** Hvis bekræftelsen er forkert eller mangelfuld, svar: "Gentag venligst mængde og metode for ilt."
-    *   **Handling ved Succes:** Gå til næste punkt.
-
-*   **2. EKG & SMERTER (Separat Håndtering):**
-    *   **Din Ordination:** "Han klager over brystsmerter. Vi skal have et EKG og giv ham noget for smerterne."
-    *   **Afvent Afklaring:** Brugeren skal afklare *begge* dele. Du skal håndtere dem separat, uanset hvilken rækkefølge brugeren tager dem i.
-        *   **EKG:** Hvis brugeren spørger til EKG, bekræft: "Et EKG."
-        *   **Smerter:** Hvis brugeren spørger til smerter, ordiner: "Start med Nitroglycerin. To pust under tungen."
-    *   **Husk Hvad Der Er Bekræftet:** Hold styr på, om EKG er bekræftet, og om Nitroglycerin er bekræftet.
-    *   **Vurdering:** Gå først videre, når *begge* dele er blevet korrekt bekræftet (f.eks. "Jeg tager et EKG" og "Jeg giver to pust Nitroglycerin under tungen").
-    *   **Handling ved Mangel:** Hvis kun én del er bekræftet, mind brugeren om den anden del. F.eks., hvis EKG er bekræftet, men ikke smertestillende, så sig: "Fint. Hvad med det smertestillende?"
-    *   **Handling ved Succes:** Når begge dele er bekræftet, gå til næste punkt.
-
-*   **3. VÆSKE (Fleksibel Afklaring):**
-    *   **Din Ordination:** "Han ser også lidt dehydreret ud. Giv ham noget væske."
-    *   **Afvent Afklaring:** Brugeren skal afklare de tre nøgleelementer: **type**, **mængde**, og **tid**. De kan gøre dette ved at spørge separat eller ved at foreslå den fulde ordination.
-    *   **Dine Svar (hvis spurgt separat):** Svar KUN på det, der bliver spurgt om.
-        *   Type: "Natriumklorid."
-        *   Mængde: "En liter."
-        *   Tid: "Det skal løbe ind over 30 minutter."
-    *   **Håndtering af Komplet Bekræftelse:** Hvis brugerens besked indeholder en korrekt bekræftelse af **alle tre dele** (uanset om det er som et spørgsmål eller en konstatering, f.eks. "okay, så en liter natriumklorid over 30 minutter?"), skal du anse det for en succesfuld "closed loop".
-    *   **Handling ved Succes:** Når den fulde ordination er korrekt bekræftet, svar ved at anerkende OG give næste ordination i samme besked. Eksempel: "Korrekt. Tag også blodprøver, når du er i gang."
-    *   **Håndtering af Delvis Bekræftelse:** Hvis brugeren kun bekræfter en del (f.eks. "Okay, Natriumklorid"), skal du guide dem: "Korrekt. Men du mangler at afklare mængde og indløbstid."
-    *   **Handling ved Fejl:** Hvis en samlet bekræftelse indeholder forkerte oplysninger, svar: "Nej, det er ikke korrekt. Gentag venligst den fulde ordination."
-
-*   **4. BLODPRØVER:**
-    *   **Din Ordination:** "Tag også blodprøver, når du er i gang."
-    *   **Afvent Afklaring:** Brugeren skal spørge "Hvilke blodprøver?".
-    *   **Din Præcisering:** Svar: "En troponin I og en fuld akutpakke."
-    *   **Vurdering:** Afvent en bekræftelse, der indeholder nøgleordene "troponin" og "akutpakke".
-    *   **Handling ved Fejl:** Hvis bekræftelsen er forkert, svar: "Gentag venligst, hvilke blodprøver der skal tages."
-    *   **Handling ved Succes:** Gå til næste punkt.
-
-*   **5. AFSLUTNING:**
-    *   **Din Ordination:** "Ring til mig med det samme, når EKG'et er klar."
-    *   **Vurdering:** Afvent en simpel bekræftelse.
-    *   **Handling ved Succes:** Efter brugerens bekræftelse, siger du **PRÆCIS, ORD FOR ORD OG UDEN NOGEN ÆNDRINGER ELLER TILFØJELSER, DENNE ENDELIGE SÆTNING**: "Jeg afventer dit opkald." Dette er den *eneste* måde, simulationen kan afsluttes korrekt på.
-`;
+type GameState = 'intro' | 'playing' | 'feedback' | 'won' | 'lost';
 
 const ClosedLoopSimulator: React.FC<ClosedLoopSimulatorProps> = ({ scenario }) => {
-  const [status, setStatus] = useState<Status>('idle');
-  const [history, setHistory] = useState<Message[]>([]);
-  const [userInput, setUserInput] = useState('');
-  const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState<StructuredFeedback | null>(null);
+  const [gameState, setGameState] = useState<GameState>('intro');
+  const [currentLevelIndex, setCurrentLevelIndex] = useState(0);
+  const [health, setHealth] = useState(100);
+  const [lastActionCorrect, setLastActionCorrect] = useState(false);
   
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [history]);
+  const currentLevel: GameLevel = SAFETY_GAME_LEVELS[currentLevelIndex];
 
-
-  const handleFeedbackGeneration = useCallback(async (finalHistory: Message[]) => {
-    if (finalHistory.length < 2) { 
-        setStatus('idle');
-        return;
-    }
-    setStatus('processing_feedback');
-    try {
-        const feedbackObject = await getClosedLoopFeedback(scenario, finalHistory);
-        setFeedback(feedbackObject);
-        setStatus('feedback');
-    } catch (e) {
-        const err = e as Error;
-        console.error("Error generating feedback:", err);
-        setError(err.message || 'Der opstod en fejl under generering af feedback.');
-        setStatus('error');
-    }
-  }, [scenario]);
-
-  const handleReset = useCallback(() => {
-    setHistory([]);
-    setFeedback(null);
-    setError('');
-    setUserInput('');
-    setStatus('idle');
-  }, []);
-
-  const handleStart = () => {
-    handleReset();
-    const firstMessage = { role: 'model' as const, text: 'Giv patienten noget ilt, det ser skidt ud.' };
-    setHistory([firstMessage]);
-    setStatus('active');
+  const startGame = () => {
+    setGameState('playing');
+    setCurrentLevelIndex(0);
+    setHealth(100);
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim() || status !== 'active') return;
+  const handleAction = (action: ActionType) => {
+    const isCorrect = action === currentLevel.correctAction;
+    setLastActionCorrect(isCorrect);
     
-    setStatus('loading');
-    const newUserMessage: Message = { role: 'user', text: userInput };
-    const newHistory = [...history, newUserMessage];
-    setHistory(newHistory);
-    setUserInput('');
+    if (!isCorrect) {
+      setHealth(prev => Math.max(0, prev - 25)); // Mist helbred ved fejl
+    }
     
-    try {
-      const modelResponseText = await getChatResponse(newHistory, systemInstruction);
-      
-      const newModelMessage: Message = { role: 'model', text: modelResponseText };
-      setHistory(prev => [...prev, newModelMessage]);
-  
-      const finalPhrase = "jeg afventer dit opkald";
-      const normalizedModelText = modelResponseText.toLowerCase().replace(/[.,!?]/g, "").trim();
-  
-      if (normalizedModelText.endsWith(finalPhrase)) {
-        setTimeout(() => handleFeedbackGeneration([...newHistory, newModelMessage]), 1000);
-      } else {
-        setStatus('active');
-      }
-    } catch (err) {
-      console.error("Error sending message:", err);
-      setError("Kunne ikke sende besked til AI-agenten. Prøv venligst igen.");
-      setStatus('error');
+    setGameState('feedback');
+  };
+
+  const nextLevel = () => {
+    if (health <= 0) {
+      setGameState('lost');
+      return;
+    }
+
+    if (currentLevelIndex + 1 >= SAFETY_GAME_LEVELS.length) {
+      setGameState('won');
+    } else {
+      setCurrentLevelIndex(prev => prev + 1);
+      setGameState('playing');
     }
   };
 
-  const ChatMessage: React.FC<{ message: Message }> = ({ message }) => {
-    const isModel = message.role === 'model';
+  // --- Views ---
+
+  if (gameState === 'intro') {
     return (
-      <div className={`flex items-start space-x-3 my-4 ${isModel ? '' : 'flex-row-reverse space-x-reverse'}`}>
-        <div className={`flex-shrink-0 p-2 rounded-full ${isModel ? 'bg-slate-200 dark:bg-slate-700' : 'bg-blue-100 dark:bg-blue-900/50'}`}>
-          {isModel ? <BotIcon className="h-5 w-5 text-slate-600 dark:text-slate-300" /> : <UserIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+      <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-8">
+        <div className="bg-blue-100 dark:bg-blue-900/50 p-6 rounded-full">
+            <AlertTriangleIcon className="h-16 w-16 text-blue-600 dark:text-blue-400" />
         </div>
-        <div className={`p-3 rounded-lg max-w-sm ${isModel ? 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200' : 'bg-blue-600 text-white'}`}>
-          <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+        <div>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Patientsikkerheds-spillet</h2>
+            <p className="text-slate-600 dark:text-slate-300 max-w-md mx-auto">
+                Du er patientens sidste sikkerhedsbarriere. Lægen (Dr. Jørgensen) er stresset og giver ordrer. Din opgave er at filtrere dem.
+            </p>
         </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-lg">
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <CheckCircleIcon className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                <h3 className="font-bold text-green-800 dark:text-green-300">Udfør</h3>
+                <p className="text-xs text-green-700 dark:text-green-400">Kun hvis ordren er sikker og præcis.</p>
+            </div>
+            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <LightbulbIcon className="h-8 w-8 text-yellow-600 mx-auto mb-2" />
+                <h3 className="font-bold text-yellow-800 dark:text-yellow-300">Afklar</h3>
+                <p className="text-xs text-yellow-700 dark:text-yellow-400">Hvis der mangler info (dosis, tid).</p>
+            </div>
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <StopCircleIcon className="h-8 w-8 text-red-600 mx-auto mb-2" />
+                <h3 className="font-bold text-red-800 dark:text-red-300">Stop</h3>
+                <p className="text-xs text-red-700 dark:text-red-400">Hvis ordren er direkte forkert.</p>
+            </div>
+        </div>
+
+        <button 
+            onClick={startGame}
+            className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg transition-transform hover:scale-105"
+        >
+            Start Vagten
+        </button>
       </div>
     );
-  };
-  
-  const getStatusMessage = () => {
-    switch (status) {
-      case 'idle':
-        return {
-          title: 'Klar til Closed Loop Simulation',
-          icon: <MessageCircleIcon className="h-10 w-10 mb-3" />,
-          text: 'Klik på "Start Simulation" for at modtage den første ordination fra lægen.',
-        };
-      case 'error':
-         return {
-          title: 'Der opstod en fejl',
-          icon: <AlertTriangleIcon className="h-10 w-10 mb-3 text-red-500" />,
-          text: error,
-        };
-      default:
-        return null;
-    }
-  };
-
-  const statusContent = getStatusMessage();
-
-  if (status === 'feedback' || (status === 'error' && feedback)) {
-    return <Feedback feedback={feedback} error={error} onReset={handleReset} />;
   }
-  
+
+  if (gameState === 'won') {
+    return (
+        <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-green-50 dark:bg-green-900/20 rounded-lg border-2 border-green-200">
+            <CheckCircleIcon className="h-24 w-24 text-green-500 mb-6" />
+            <h2 className="text-3xl font-bold text-green-800 dark:text-green-200 mb-2">Fremragende Arbejde!</h2>
+            <p className="text-green-700 dark:text-green-300 mb-8 max-w-md">
+                Du holdt hovedet koldt og sikrede, at Hr. Svendsen fik den korrekte behandling uden fejl. Din Closed Loop kommunikation var skarp.
+            </p>
+            <div className="w-full max-w-xs bg-gray-200 rounded-full h-4 mb-8">
+                <div className="bg-green-500 h-4 rounded-full" style={{ width: `${health}%` }}></div>
+            </div>
+            <button onClick={startGame} className="flex items-center px-6 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors">
+                <RefreshCwIcon className="h-5 w-5 mr-2" /> Spil Igen
+            </button>
+        </div>
+    );
+  }
+
+  if (gameState === 'lost') {
+    return (
+        <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-red-50 dark:bg-red-900/20 rounded-lg border-2 border-red-200">
+            <AlertTriangleIcon className="h-24 w-24 text-red-500 mb-6" />
+            <h2 className="text-3xl font-bold text-red-800 dark:text-red-200 mb-2">Kritisk Fejl</h2>
+            <p className="text-red-700 dark:text-red-300 mb-8 max-w-md">
+                Der blev begået for mange fejl i kommunikationen, og patientsikkerheden var truet. Husk: Det er bedre at spørge en gang for meget end at gætte.
+            </p>
+            <button onClick={startGame} className="flex items-center px-6 py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition-colors">
+                <RefreshCwIcon className="h-5 w-5 mr-2" /> Prøv Igen
+            </button>
+        </div>
+    );
+  }
+
   return (
-    <div className="space-y-4 h-full flex flex-col">
-      <h2 className="text-xl font-bold text-slate-900 dark:text-white border-b-2 border-blue-500 pb-2">
-        Closed Loop Simulator
-      </h2>
-      <div ref={chatContainerRef} className="flex-grow p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg overflow-y-auto min-h-[300px] flex flex-col">
-        {history.length > 0 ? (
-          history.map((msg, index) => <ChatMessage key={index} message={msg} />)
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center text-slate-500 dark:text-slate-400">
-            {statusContent && (
-              <>
-                {statusContent.icon}
-                <p className="font-semibold">{statusContent.title}</p>
-                <p className="text-sm mt-1">{statusContent.text}</p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-       <div className="pt-2 mt-auto">
-        {status === 'idle' && (
-          <button onClick={handleStart} className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105">
-            <MessageCircleIcon className="h-5 w-5 mr-2" /> Start Simulation
-          </button>
-        )}
-
-        {(status === 'active' || status === 'loading') && (
-            <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
-                <input
-                    type="text"
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    placeholder="Skriv dit svar her..."
-                    disabled={status === 'loading'}
-                    className="flex-grow block w-full rounded-md border-slate-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-white dark:bg-slate-800 disabled:opacity-50"
-                    autoFocus
+    <div className="h-full flex flex-col bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden relative">
+      {/* Top Bar: Health & Progress */}
+      <div className="bg-white dark:bg-slate-800 p-4 shadow-sm flex justify-between items-center z-10">
+        <div className="flex items-center space-x-2">
+            <span className="text-sm font-bold text-slate-500 uppercase">Patientsikkerhed</span>
+            <div className="w-32 h-4 bg-slate-200 rounded-full overflow-hidden">
+                <div 
+                    className={`h-full transition-all duration-500 ${health > 50 ? 'bg-green-500' : health > 25 ? 'bg-yellow-500' : 'bg-red-600'}`} 
+                    style={{ width: `${health}%` }}
                 />
-                <button type="submit" disabled={status === 'loading' || !userInput.trim()} className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-slate-400 disabled:dark:bg-slate-600 disabled:cursor-not-allowed">
-                    {status === 'loading' ? <LoaderIcon className="h-5 w-5 animate-spin"/> : <SendIcon className="h-5 w-5"/>}
-                </button>
-            </form>
-        )}
-
-        {status === 'processing_feedback' && (
-          <button disabled className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-slate-400 dark:bg-slate-600 cursor-not-allowed">
-            <LoaderIcon className="h-5 w-5 mr-2 animate-spin" /> Analyserer samtale...
-          </button>
-        )}
-
-        {status === 'error' && !feedback && (
-          <button onClick={handleReset} className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500">
-            <RefreshCwIcon className="h-5 w-5 mr-2"/> Prøv Igen
-          </button>
-        )}
+            </div>
+        </div>
+        <div className="text-sm font-bold text-slate-400">
+            Niveau {currentLevelIndex + 1} / {SAFETY_GAME_LEVELS.length}
+        </div>
       </div>
+
+      {/* Main Game Area */}
+      <div className="flex-grow flex flex-col items-center justify-center p-4 sm:p-8 space-y-8">
+        
+        {/* Doctor Bubble */}
+        <div className="w-full max-w-2xl bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border-l-8 border-blue-500 flex items-start space-x-4">
+            <div className="bg-blue-100 dark:bg-blue-900/50 p-3 rounded-full flex-shrink-0">
+                <BotIcon className="h-8 w-8 text-blue-600" />
+            </div>
+            <div>
+                <h3 className="text-sm font-bold text-slate-400 uppercase mb-1">Dr. Jørgensen siger:</h3>
+                <p className="text-xl md:text-2xl font-medium text-slate-800 dark:text-slate-100 leading-relaxed">
+                    "{currentLevel.doctorText}"
+                </p>
+            </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl transition-opacity duration-300 ${gameState === 'feedback' ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+            <button 
+                onClick={() => handleAction('execute')}
+                className="flex flex-col items-center justify-center p-6 bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 border-2 border-green-500 rounded-xl transition-all transform hover:-translate-y-1 hover:shadow-lg group"
+            >
+                <CheckCircleIcon className="h-8 w-8 text-green-600 mb-2 group-hover:scale-110 transition-transform" />
+                <span className="font-bold text-green-800 dark:text-green-300">Udfør & Bekræft</span>
+                <span className="text-xs text-green-700 dark:text-green-400/70 mt-1">Ordren er sikker</span>
+            </button>
+
+            <button 
+                onClick={() => handleAction('clarify')}
+                className="flex flex-col items-center justify-center p-6 bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 border-2 border-yellow-500 rounded-xl transition-all transform hover:-translate-y-1 hover:shadow-lg group"
+            >
+                <LightbulbIcon className="h-8 w-8 text-yellow-600 mb-2 group-hover:scale-110 transition-transform" />
+                <span className="font-bold text-yellow-800 dark:text-yellow-300">Spørg / Afklar</span>
+                <span className="text-xs text-yellow-700 dark:text-yellow-400/70 mt-1">Mangler info</span>
+            </button>
+
+            <button 
+                onClick={() => handleAction('stop')}
+                className="flex flex-col items-center justify-center p-6 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 border-2 border-red-500 rounded-xl transition-all transform hover:-translate-y-1 hover:shadow-lg group"
+            >
+                <StopCircleIcon className="h-8 w-8 text-red-600 mb-2 group-hover:scale-110 transition-transform" />
+                <span className="font-bold text-red-800 dark:text-red-300">Stop & Korriger</span>
+                <span className="text-xs text-red-700 dark:text-red-400/70 mt-1">Farlig ordre</span>
+            </button>
+        </div>
+      </div>
+
+      {/* Feedback Overlay */}
+      {gameState === 'feedback' && (
+        <div className="absolute inset-0 z-20 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border-t-8 ${lastActionCorrect ? 'border-green-500' : 'border-red-500'}`}>
+                <div className={`p-6 ${lastActionCorrect ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                    <div className="flex items-center space-x-3 mb-2">
+                        {lastActionCorrect ? (
+                            <CheckCircleIcon className="h-8 w-8 text-green-600" />
+                        ) : (
+                            <AlertTriangleIcon className="h-8 w-8 text-red-600" />
+                        )}
+                        <h3 className={`text-2xl font-bold ${lastActionCorrect ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+                            {lastActionCorrect ? 'Korrekt!' : 'Ikke helt...'}
+                        </h3>
+                    </div>
+                    <p className="text-slate-700 dark:text-slate-300 text-lg leading-relaxed">
+                        {lastActionCorrect ? currentLevel.successFeedback : currentLevel.failureFeedback}
+                    </p>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-800 flex justify-end">
+                    <button 
+                        onClick={nextLevel}
+                        className={`px-6 py-2 rounded-lg font-bold text-white shadow-md transition-colors ${lastActionCorrect ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-600 hover:bg-slate-700'}`}
+                    >
+                        {lastActionCorrect ? 'Næste Udfordring' : 'Prøv Igen / Videre'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

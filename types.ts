@@ -1,10 +1,10 @@
 
 export interface IsbarInput {
-  identification: string;
+  identifikation: string;
   situation: string;
-  background: string;
-  analysis: string;
-  recommendation: string;
+  baggrund: string;
+  analyse: string;
+  anbefaling: string;
 }
 
 export interface ScenarioData {
