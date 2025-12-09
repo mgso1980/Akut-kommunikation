@@ -141,5 +141,89 @@ export const QUIZ_POOL: QuizQuestion[] = [
     question: "Hvilke handlinger er en del af 'ABCDE' tilgangen? (Vælg alle relevante)",
     options: ["Airway (Luftveje)", "Breathing (Vejrtrækning)", "Dinner (Aftensmad)", "Circulation (Cirkulation)"],
     correctAnswers: ["Airway (Luftveje)", "Breathing (Vejrtrækning)", "Circulation (Cirkulation)"]
+  },
+  {
+    id: 9,
+    type: 'multiple-choice',
+    question: "Hvordan bør du formulere dig under 'Anbefaling' (R) i ISBAR?",
+    options: ["Vage hentydninger så lægen selv gætter det", "Klart og tydeligt med specifikke ønsker eller krav", "Ved at spørge patienten hvad han vil", "Det er ligegyldigt, bare du siger noget"],
+    correctAnswers: ["Klart og tydeligt med specifikke ønsker eller krav"]
+  },
+  {
+    id: 10,
+    type: 'multiple-choice',
+    question: "Hvad indebærer 'Safety Guard' rollen i Closed Loop?",
+    options: ["At man fysisk beskytter patienten mod fald", "At man agerer filter og stopper/afklarer farlige eller upræcise ordrer", "At man låser døren til stuen", "At man kun observerer og intet siger"],
+    correctAnswers: ["At man agerer filter og stopper/afklarer farlige eller upræcise ordrer"]
+  },
+  {
+    id: 11,
+    type: 'multiple-choice',
+    question: "I Hr. Svendsen casen, hvad tyder den 'rallende' vejrtrækning på?",
+    options: ["At han sover godt", "Sekretstagnation eller væske i lungerne/luftvejene", "At han er tørstig", "Det er normalt for KOL patienter"],
+    correctAnswers: ["Sekretstagnation eller væske i lungerne/luftvejene"]
+  },
+  {
+    id: 12,
+    type: 'multiple-choice',
+    question: "Hvorfor er det vigtigt at præsentere sig selv (Identifikation)?",
+    options: ["Det er høfligt", "Så modtageren ved præcis, hvem de taler med, og hvilket kompetenceniveau man har", "For at trække tiden ud", "Det er ikke vigtigt i akutte situationer"],
+    correctAnswers: ["Så modtageren ved præcis, hvem de taler med, og hvilket kompetenceniveau man har"]
+  },
+  {
+    id: 13,
+    type: 'multiple-choice',
+    question: "Hvad hører primært hjemme under 'Analyse' (A) i ISBAR?",
+    options: ["Patientens navn og CPR", "En detaljeret gennemgang af patientens medicinliste", "Din faglige vurdering af hvad problemet er", "En bestilling af blodprøver"],
+    correctAnswers: ["Din faglige vurdering af hvad problemet er"]
+  },
+  {
+    id: 14,
+    type: 'multiple-choice',
+    question: "Du modtager en mundtlig ordination, som du mener er en fejl (f.eks. for høj dosis). Hvad gør du?",
+    options: ["Udfører ordinationen, da lægen har ansvaret", "Giver halvdelen af dosis", "Stopper op og udtrykker din bekymring (Speak Up)", "Venter til en anden læge kommer"],
+    correctAnswers: ["Stopper op og udtrykker din bekymring (Speak Up)"]
+  },
+  {
+    id: 15,
+    type: 'multiple-choice',
+    question: "Hvilken information er mest relevant at have klar, *før* du ringer op (Forberedelse)?",
+    options: ["Patientens yndlingsmad", "Opdaterede vitale værdier (TOKS)", "Navnet på patientens praktiserende læge", "Datoen for patientens sidste tandlægebesøg"],
+    correctAnswers: ["Opdaterede vitale værdier (TOKS)"]
+  },
+  {
+    id: 16,
+    type: 'multiple-choice',
+    question: "Hvad er en hyppig årsag til fejl i mundtlige ordinationer?",
+    options: ["Lægen taler for langsomt", "Brug af enslydende medicinnavne eller doser", "At sygeplejersken skriver det ned", "At der er stille på stuen"],
+    correctAnswers: ["Brug af enslydende medicinnavne eller doser"]
+  },
+  {
+    id: 17,
+    type: 'multiple-choice',
+    question: "Hvilken rolle spiller 'toneleje' og 'kropssprog' i kommunikation?",
+    options: ["Ingen, det er kun ordene der tæller", "En stor rolle (non-verbal kommunikation)", "Det er kun vigtigt for patienter", "Det forstyrrer budskabet"],
+    correctAnswers: ["En stor rolle (non-verbal kommunikation)"]
+  },
+  {
+    id: 18,
+    type: 'multiple-choice',
+    question: "Hvad betyder 'Speak Up' i en patientsikkerheds-kontekst?",
+    options: ["At man taler højt i telefonen", "At man tør sige fra eller stille spørgsmål ved tvivl uanset hierarki", "At man holder tale til morgenkonferencen", "At man afbryder andre"],
+    correctAnswers: ["At man tør sige fra eller stille spørgsmål ved tvivl uanset hierarki"]
+  },
+  {
+    id: 19,
+    type: 'multiple-choice',
+    question: "Hvis du er stresset under en overlevering, hvad er så den bedste strategi?",
+    options: ["Tal hurtigere for at blive færdig", "Spring punkter over i ISBAR", "Tag en dyb indånding og hold dig stringent til strukturen", "Lad være med at sige noget"],
+    correctAnswers: ["Tag en dyb indånding og hold dig stringent til strukturen"]
+  },
+  {
+    id: 20,
+    type: 'multiple-select',
+    question: "Hvilke elementer kan forstyrre 'Closed Loop' processen? (Vælg alle relevante)",
+    options: ["Afbrydelser", "Støj", "At modtageren nikker i stedet for at gentage", "At man skriver det ned"],
+    correctAnswers: ["Afbrydelser", "Støj", "At modtageren nikker i stedet for at gentage"]
   }
 ];
